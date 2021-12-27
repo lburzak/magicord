@@ -43,52 +43,80 @@ class MagicordProcessor(
         )
     }
 
+    fun createRunFun(botConfig: BotConfig, commandHandlers: Sequence<FunSpec>): FunSpec {
+        val runBuilder = FunSpec.builder("run")
+            .addStatement("println(%S)", "Running a bot")
+            .addStatement("val api = %T()", DiscordApiBuilder::class)
+            .addStatement("api.setToken(%S).login().join()", botConfig.token)
+
+        commandHandlers.forEach { handler ->
+            runBuilder.addStatement(
+                "api.addMessageCreateListener(%M(%S, ::%N))", buildPrefixHandlerMember, handler.name, handler
+            )
+        }
+
+        return runBuilder.build()
+    }
+
+    fun makeBotClass(botConfig: BotConfig, className: String, classDeclaration: KSClassDeclaration): TypeSpec {
+        val classBuilder = TypeSpec.classBuilder(className)
+
+        classBuilder.addProperty(createBotInstanceProperty(classDeclaration))
+
+        val commandHandlers = classDeclaration.getDeclaredFunctions()
+            .filter { it.isCommandHandler() }
+            .map { it.toCommandHandler() }
+
+        classBuilder
+            .addFunction(createRunFun(botConfig, commandHandlers))
+
+        commandHandlers.forEach { handler ->
+            classBuilder.addFunction(handler)
+        }
+
+        return classBuilder
+            .build()
+    }
+
+    fun KSFunctionDeclaration.toCommandHandler(): FunSpec {
+        val command = simpleName.asString()
+        return FunSpec.builder(command)
+            .addModifiers(KModifier.PRIVATE)
+            .addParameter("event", MessageCreateEvent::class)
+            .addStatement("val channel = %T(event.channel.idAsString)", Channel::class)
+            .addStatement("return bot.`%L`(%L)", command, if (hasChannelDependency()) "channel" else "")
+            .returns(String::class)
+            .build()
+    }
+
+    fun KSClassDeclaration.guessClass(): ClassName =
+        ClassName.bestGuess(qualifiedName?.asString() ?: "")
+
+    fun createBotInstanceProperty(classDeclaration: KSClassDeclaration): PropertySpec {
+        val botClass = classDeclaration.guessClass()
+        return PropertySpec.builder("bot", botClass)
+            .initializer("%T()", botClass)
+            .addModifiers(KModifier.PRIVATE)
+            .build()
+    }
+
+    private val buildPrefixHandlerMember = MemberName(
+        "com.github.ligmalabs.magicord.util.javacord",
+        "buildPrefixCommandHandler"
+    )
+
     inner class Visitor : KSVisitorVoid() {
         override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
             val packageName = classDeclaration.containingFile!!.packageName.asString()
             val className = "Magicord${classDeclaration.simpleName.asString()}"
-            val fileKotlinPoet = FileSpec.builder(packageName, className)
 
             val botConfig = classDeclaration.readBotConfig()
+            val botType = makeBotClass(botConfig, className, classDeclaration)
 
-            val functions = classDeclaration.getDeclaredFunctions().filter { it.isCommandHandler() }
-
-            val classBuilder = TypeSpec.classBuilder(className)
-            val botClass = ClassName.bestGuess(classDeclaration.qualifiedName?.asString() ?: "")
-
-            val propertyBuilder = PropertySpec.builder("bot", botClass)
-            propertyBuilder.initializer("%T()", botClass)
-            propertyBuilder.addModifiers(KModifier.PRIVATE)
-            classBuilder.addProperty(propertyBuilder.build())
-
-            val runBuilder = FunSpec.builder("run")
-
-            runBuilder
-                .addStatement("println(%S)", "Running a bot")
-                .addStatement("val api = %T()", DiscordApiBuilder::class)
-                .addStatement("api.setToken(%S).login().join()", botConfig.token)
-
-            functions.forEach {
-                val command = it.simpleName.asString()
-                val code = """
-                api.addMessageCreateListener { event: %T ->
-                         if (event.messageContent.equals(%S, ignoreCase = true)) {
-                            val channel = %T(event.channel.idAsString)
-                            val response = bot.`%L`(%L)
-                            event.channel.sendMessage(response)
-                        }
-                    }
-                """.trimIndent()
-                runBuilder.addStatement(code, MessageCreateEvent::class, "!$command", Channel::class, command, if (it.hasChannelDependency()) "channel" else "")
-            }
-
-            classBuilder
-                .addFunction(
-                    runBuilder.build()
-                )
-
-            fileKotlinPoet.addType(classBuilder.build()).build()
-            fileKotlinPoet.build().writeTo(codeGenerator, Dependencies(true, classDeclaration.containingFile!!))
+            FileSpec.builder(packageName, className)
+                .addType(botType)
+                .build()
+                .writeTo(codeGenerator, Dependencies(true, classDeclaration.containingFile!!))
         }
     }
 
