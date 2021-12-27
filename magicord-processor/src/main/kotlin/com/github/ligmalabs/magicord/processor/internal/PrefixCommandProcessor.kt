@@ -7,7 +7,7 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import org.javacord.api.event.message.MessageCreateEvent
 
-internal class CommandProcessor {
+internal class PrefixCommandProcessor {
     fun buildHandler(functionDeclaration: KSFunctionDeclaration): FunSpec {
         val commandName = functionDeclaration.simpleName.asString()
         return FunSpec.builder(commandName)

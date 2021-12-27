@@ -1,7 +1,7 @@
 package com.github.ligmalabs.magicord.processor
 
 import com.github.ligmalabs.magicord.processor.internal.BotProcessor
-import com.github.ligmalabs.magicord.processor.internal.CommandProcessor
+import com.github.ligmalabs.magicord.processor.internal.PrefixCommandProcessor
 import com.google.auto.service.AutoService
 import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
@@ -13,7 +13,7 @@ class MagicordProvider : SymbolProcessorProvider {
         return MagicordProcessor(
             environment.logger,
             BotProcessor(
-                commandProcessor = CommandProcessor(),
+                prefixCommandProcessor = PrefixCommandProcessor(),
                 environment.codeGenerator
             )
         )

@@ -1,7 +1,7 @@
 package com.github.ligmalabs.magicord.processor.internal
 
 import com.github.ligmalabs.magicord.annotation.Bot
-import com.github.ligmalabs.magicord.annotation.Command
+import com.github.ligmalabs.magicord.annotation.PrefixCommand
 import com.github.ligmalabs.magicord.api.BotConfig
 import com.github.ligmalabs.magicord.processor.ClassProcessor
 import com.google.devtools.ksp.getDeclaredFunctions
@@ -11,7 +11,7 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.squareup.kotlinpoet.*
 import org.javacord.api.DiscordApiBuilder
 
-internal class BotProcessor(private val commandProcessor: CommandProcessor, private val codeGenerator: CodeGenerator) :
+internal class BotProcessor(private val prefixCommandProcessor: PrefixCommandProcessor, private val codeGenerator: CodeGenerator) :
     ClassProcessor {
     override fun process(classDeclaration: KSClassDeclaration) {
         val packageName = classDeclaration.containingFile!!.packageName.asString()
@@ -26,14 +26,14 @@ internal class BotProcessor(private val commandProcessor: CommandProcessor, priv
     }
 
     private fun buildBot(classDeclaration: KSClassDeclaration): TypeSpec {
-        val commandHandlers = classDeclaration.getDeclaredFunctions()
-            .filter { it.isAnnotatedWith(Command::class) }
-            .map { commandProcessor.buildHandler(it) }
+        val prefixCommandHandlers = classDeclaration.getDeclaredFunctions()
+            .filter { it.isAnnotatedWith(PrefixCommand::class) }
+            .map { prefixCommandProcessor.buildHandler(it) }
 
         return TypeSpec.classBuilder("Magicord${classDeclaration.simpleName.asString()}")
             .addProperty(createBotInstanceProperty(classDeclaration.guessClass()))
-            .addFunction(createRunFun(classDeclaration.readBotConfig(), commandHandlers))
-            .addFunctions(commandHandlers.asIterable())
+            .addFunction(createRunFun(classDeclaration.readBotConfig(), prefixCommandHandlers))
+            .addFunctions(prefixCommandHandlers.asIterable())
             .build()
     }
 
