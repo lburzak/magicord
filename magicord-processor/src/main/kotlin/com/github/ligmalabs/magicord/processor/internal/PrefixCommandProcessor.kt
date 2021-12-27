@@ -1,13 +1,14 @@
 package com.github.ligmalabs.magicord.processor.internal
 
 import com.github.ligmalabs.magicord.api.Channel
+import com.github.ligmalabs.magicord.api.User
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
-import com.google.devtools.ksp.symbol.KSValueParameter
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.MemberName
 import org.javacord.api.event.message.MessageCreateEvent
+import kotlin.reflect.KClass
 
 internal class PrefixCommandProcessor {
     fun buildHandler(functionDeclaration: KSFunctionDeclaration): FunSpec {
@@ -16,8 +17,11 @@ internal class PrefixCommandProcessor {
         val code = CodeBlock.builder()
             .add("return bot.`%L`(", commandName)
 
-        if (functionDeclaration.hasChannelParameter())
-            code.add("channel = event.%M()", readChannelMember)
+        if (functionDeclaration.hasParameterOfType(Channel::class))
+            code.add("channel = event.%M(), ", readChannelMember)
+
+        if (functionDeclaration.hasParameterOfType(User::class))
+            code.add("author = event.%M(), ", readAuthorMember)
 
         code.add(")")
 
@@ -34,9 +38,11 @@ internal class PrefixCommandProcessor {
         "readChannel"
     )
 
-    private fun KSFunctionDeclaration.hasChannelParameter(): Boolean =
-        parameters.any { it.isChannelParameter() }
+    private val readAuthorMember = MemberName(
+        "com.github.ligmalabs.magicord.util.javacord",
+        "readAuthor"
+    )
 
-    private fun KSValueParameter.isChannelParameter(): Boolean =
-        type.resolve().declaration.qualifiedName?.asString() == Channel::class.qualifiedName
+    private fun <T: Any> KSFunctionDeclaration.hasParameterOfType(type: KClass<T>) =
+        parameters.any { it.type.resolve().declaration.qualifiedName?.asString() == type.qualifiedName }
 }
