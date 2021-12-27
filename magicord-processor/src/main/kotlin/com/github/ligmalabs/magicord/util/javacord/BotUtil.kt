@@ -1,5 +1,6 @@
 package com.github.ligmalabs.magicord.util.javacord
 
+import com.github.ligmalabs.magicord.api.Channel
 import org.javacord.api.event.message.MessageCreateEvent
 
 fun buildPrefixCommandHandler(command: String, handler: (MessageCreateEvent) -> String): (event: MessageCreateEvent) -> Unit {
@@ -10,3 +11,7 @@ fun buildPrefixCommandHandler(command: String, handler: (MessageCreateEvent) -> 
         }
     }
 }
+
+fun MessageCreateEvent.readChannel(): Channel = Channel(
+    id = channel.idAsString
+)
