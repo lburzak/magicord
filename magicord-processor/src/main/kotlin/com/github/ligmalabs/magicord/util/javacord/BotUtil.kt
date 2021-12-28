@@ -4,19 +4,11 @@ import com.github.ligmalabs.magicord.api.Channel
 import com.github.ligmalabs.magicord.api.User
 import org.javacord.api.event.message.MessageCreateEvent
 
-fun buildPrefixCommandHandler(command: String, handler: (MessageCreateEvent) -> String): (event: MessageCreateEvent) -> Unit {
-    return { event ->
-        if (event.messageContent.equals("!$command", ignoreCase = true)) {
-            val response = handler(event)
-            event.channel.sendMessage(response)
-        }
-    }
-}
-
 fun MessageCreateEvent.readChannel(): Channel = Channel(
     id = channel.idAsString
 )
 
 fun MessageCreateEvent.readAuthor(): User = User(
-    id = messageAuthor.idAsString
+    id = messageAuthor.idAsString,
+    mentionTag = messageAuthor.asUser().get().mentionTag
 )

@@ -10,6 +10,7 @@ import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.squareup.kotlinpoet.*
 import org.javacord.api.DiscordApiBuilder
+import org.javacord.api.event.message.MessageCreateEvent
 
 internal class BotProcessor(private val prefixCommandProcessor: PrefixCommandProcessor, private val codeGenerator: CodeGenerator) :
     ClassProcessor {
@@ -30,10 +31,13 @@ internal class BotProcessor(private val prefixCommandProcessor: PrefixCommandPro
             .filter { it.isAnnotatedWith(PrefixCommand::class) }
             .map { prefixCommandProcessor.buildHandler(it) }
 
+        val onMessageFun = createOnMessageFun(prefixCommandHandlers)
+
         return TypeSpec.classBuilder("Magicord${classDeclaration.simpleName.asString()}")
             .addProperty(createBotInstanceProperty(classDeclaration.guessClass()))
-            .addFunction(createRunFun(classDeclaration.readBotConfig(), prefixCommandHandlers))
+            .addFunction(createRunFun(classDeclaration.readBotConfig(), onMessageFun))
             .addFunctions(prefixCommandHandlers.asIterable())
+            .addFunction(onMessageFun)
             .build()
     }
 
@@ -49,19 +53,30 @@ internal class BotProcessor(private val prefixCommandProcessor: PrefixCommandPro
         )
     }
 
-    private fun createRunFun(botConfig: BotConfig, commandHandlers: Sequence<FunSpec>): FunSpec {
+    private fun createRunFun(botConfig: BotConfig, onMessageFun: FunSpec): FunSpec {
         val runBuilder = FunSpec.builder("run")
             .addStatement("println(%S)", "Running a bot")
             .addStatement("val api = %T()", DiscordApiBuilder::class)
-            .addStatement("api.setToken(%S).login().join()", botConfig.token)
+            .addStatement("api.setToken(%S).login().join().addMessageCreateListener(::%N)", botConfig.token, onMessageFun)
 
-        commandHandlers
-            .forEach { handler ->
-                runBuilder.addStatement("api.addMessageCreateListener(%M(%S, ::%N))",
-                    buildPrefixHandlerMember, handler.name, handler)
-            }
 
         return runBuilder.build()
+    }
+
+    private fun createOnMessageFun(commandHandlers: Sequence<FunSpec>): FunSpec {
+        val code = CodeBlock.builder()
+            .beginControlFlow("when (%L)", "event.messageContent")
+
+        commandHandlers.forEach { handler ->
+            code.addStatement("%S -> event.channel.sendMessage(%N(event))", "!${handler.name}", handler)
+        }
+
+        code.endControlFlow()
+
+        return FunSpec.builder("onMessage")
+            .addParameter("event", MessageCreateEvent::class)
+            .addCode(code.build())
+            .build()
     }
 
     private fun createBotInstanceProperty(sourceClass: ClassName): PropertySpec {
@@ -70,9 +85,4 @@ internal class BotProcessor(private val prefixCommandProcessor: PrefixCommandPro
             .addModifiers(KModifier.PRIVATE)
             .build()
     }
-
-    private val buildPrefixHandlerMember = MemberName(
-        "com.github.ligmalabs.magicord.util.javacord",
-        "buildPrefixCommandHandler"
-    )
 }
